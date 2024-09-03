@@ -214,7 +214,7 @@ app.frame('/check', async (c) => {
       ),
       intents: [
         <Button action="/">Back</Button>,
-        <Button action="/check">Check Again</Button>
+        <Button action="/check">Check again</Button>
       ]
     });
   }
