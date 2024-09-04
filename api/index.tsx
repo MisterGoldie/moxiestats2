@@ -4,8 +4,8 @@ import fetch from 'node-fetch';
 import { neynar } from 'frog/middlewares';
 
 const AIRSTACK_API_URL = 'https://api.airstack.xyz/gql';
-const AIRSTACK_API_KEY = '103ba30da492d4a7e89e7026a6d3a234e'; // Your actual API key
-const NEYNAR_API_KEY = '71332A9D-240D-41E0-8644-31BD70E64036'; // Replace with your actual Neynar API key
+const AIRSTACK_API_KEY = '103ba30da492d4a7e89e7026a6d3a234e';
+const WIELD_API_KEY = '940MO-E2WU4-HM4DF-K7AMK-LMZ9B';
 const FRAME_CAST_HASH = process.env.FRAME_CAST_HASH || '0x0030f186';
 
 console.log('Current FRAME_CAST_HASH:', FRAME_CAST_HASH);
@@ -116,10 +116,13 @@ async function getMoxieUserInfo(fid: string): Promise<MoxieUserInfo> {
 }
 
 async function hasLikedAndRecasted(fid: string): Promise<boolean> {
-  const url = `https://api.neynar.com/v2/farcaster/reactions/cast?hash=${FRAME_CAST_HASH}&types=likes%2Crecasts&limit=50`;
+  const url = `https://api.wield.xyz/v1/reactions?castHash=${FRAME_CAST_HASH}&fid=${fid}`;
   const options = {
     method: 'GET',
-    headers: { accept: 'application/json', api_key: NEYNAR_API_KEY },
+    headers: { 
+      'accept': 'application/json',
+      'x-api-key': WIELD_API_KEY 
+    },
   };
 
   try {
@@ -127,20 +130,15 @@ async function hasLikedAndRecasted(fid: string): Promise<boolean> {
     const response = await fetch(url, options);
     const data = await response.json();
     
-    console.log('Neynar API response:', JSON.stringify(data, null, 2));
+    console.log('Wield API response:', JSON.stringify(data, null, 2));
 
     if (!data || (!data.likes && !data.recasts)) {
       console.error('Unexpected API response structure:', data);
       return false;
     }
     
-    const likes = data.likes || [];
-    const recasts = data.recasts || [];
-
-    console.log(`Total likes: ${likes.length}, Total recasts: ${recasts.length}`);
-
-    const hasLiked = likes.some((like: any) => like.reactor.fid.toString() === fid.toString());
-    const hasRecasted = recasts.some((recast: any) => recast.recaster.fid.toString() === fid.toString());
+    const hasLiked = data.likes && data.likes.length > 0;
+    const hasRecasted = data.recasts && data.recasts.length > 0;
 
     console.log(`User ${fid} has liked: ${hasLiked}, has recasted: ${hasRecasted}`);
 
@@ -208,8 +206,8 @@ app.frame('/check', async (c) => {
     return c.res({
       image: (
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', width: '100%', height: '100%', backgroundColor: '#E7C4E1' }}>
-          <h1 style={{ fontSize: '50px', marginBottom: '20px', color: 'black' }}>Please like and recast</h1>
-          <p style={{ fontSize: '40px', color: 'black', textAlign: 'center' }}>You need to like and recast this frame to view your $MOXIE stats.</p>
+          <h1 style={{ fontSize: '50px', marginBottom: '20px', color: 'black' }}>Please like or recast</h1>
+          <p style={{ fontSize: '40px', color: 'black', textAlign: 'center' }}>You need to like or recast this frame to view your $MOXIE stats.</p>
         </div>
       ),
       intents: [
@@ -311,10 +309,10 @@ app.frame('/check', async (c) => {
           ) : userInfo ? (
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
               <p style={{ fontSize: '42px', marginBottom: '10px', color: 'black', textShadow: '1px 1px 2px rgba(0,0,0,0.5)' }}>
-              {Number(userInfo.todayEarnings).toFixed(2)} $MOXIE today
+                {Number(userInfo.todayEarnings).toFixed(2)} $MOXIE today
               </p>
               <p style={{ fontSize: '42px', marginBottom: '10px', color: 'black', textShadow: '1px 1px 2px rgba(0,0,0,0.5)' }}>
-              {Number(userInfo.lifetimeEarnings).toFixed(2)} $MOXIE all-time
+                {Number(userInfo.lifetimeEarnings).toFixed(2)} $MOXIE all-time
               </p>
             </div>
           ) : (
