@@ -5,8 +5,8 @@ import { neynar } from 'frog/middlewares';
 
 const AIRSTACK_API_URL = 'https://api.airstack.xyz/gql';
 const AIRSTACK_API_KEY = '103ba30da492d4a7e89e7026a6d3a234e';
-const WIELD_API_KEY = '940MO-E2WU4-HM4DF-K7AMK-LMZ9B';
-const FRAME_CAST_HASH = process.env.FRAME_CAST_HASH || '0xeb809faa';
+const WIELD_API_KEY = '940MO-E2WU4-HM4DF-KLMZ9B'; // Make sure WIELD_API_KEY is correctly set
+const FRAME_CAST_HASH = process.env.FRAME_CAST_HASH || '0xeb809faa'; // Ensure FRAME_CAST_HASH is set properly
 
 console.log('Current FRAME_CAST_HASH:', FRAME_CAST_HASH);
 
@@ -16,7 +16,7 @@ export const app = new Frog({
   title: '$MOXIE Earnings Tracker',
 }).use(
   neynar({
-    apiKey: 'NEYNAR_FROG_FM',
+    apiKey: 'NEYNAR_FROG_FM', // Make sure Neynar API key is set correctly
     features: ['interactor', 'cast'],
   })
 );
@@ -27,6 +27,84 @@ interface MoxieUserInfo {
   todayEarnings: string;
   lifetimeEarnings: string;
   farScore: number | null;
+}
+
+// Replacing the old hasLikedAndRecasted function with the updated version
+async function hasLikedAndRecasted(fid: string): Promise<boolean> {
+  try {
+    // First, try the Wield API
+    const result = await checkWieldAPI(fid);
+    return result;
+  } catch (error) {
+    console.error('Error with Wield API, falling back to Neynar:', error);
+    // If Wield API fails, try Neynar API
+    try {
+      const result = await checkNeynarAPI(fid);
+      return result;
+    } catch (neynarError) {
+      console.error('Error with Neynar API:', neynarError);
+      return false; // If both APIs fail, assume no interaction
+    }
+  }
+}
+
+// Function to check interactions using the Wield API
+async function checkWieldAPI(fid: string): Promise<boolean> {
+  const url = `https://api.wield.xyz/v1/reactions?castHash=${FRAME_CAST_HASH}&fid=${fid}`;
+  const options = {
+    method: 'GET',
+    headers: {
+      'accept': 'application/json',
+      'x-api-key': WIELD_API_KEY,
+    },
+  };
+
+  const response = await fetch(url, options);
+
+  if (!response.ok) {
+    throw new Error(`Wield API responded with status ${response.status}`);
+  }
+
+  const data = await response.json();
+  console.log('Wield API response:', JSON.stringify(data, null, 2));
+
+  if (!data || (!data.likes && !data.recasts)) {
+    console.error('Unexpected Wield API response structure:', data);
+    return false;
+  }
+
+  const hasLiked = data.likes && data.likes.length > 0;
+  const hasRecasted = data.recasts && data.recasts.length > 0;
+
+  console.log(`User ${fid} has liked: ${hasLiked}, has recasted: ${hasRecasted}`);
+
+  return hasLiked || hasRecasted;
+}
+
+// Function to check interactions using the Neynar API
+async function checkNeynarAPI(fid: string): Promise<boolean> {
+  const NEYNAR_API_KEY = 'NEYNAR_API_DOCS'; // Replace with your actual Neynar API key
+  const url = `https://api.neynar.com/v2/farcaster/reactions/cast?hash=${FRAME_CAST_HASH}&types=likes%2Crecasts&limit=50`;
+  const options = {
+    method: 'GET',
+    headers: { accept: 'application/json', api_key: NEYNAR_API_KEY },
+  };
+
+  const response = await fetch(url, options);
+
+  if (!response.ok) {
+    throw new Error(`Neynar API responded with status ${response.status}`);
+  }
+
+  const data = await response.json();
+  console.log('Neynar API response:', JSON.stringify(data, null, 2));
+
+  const userLiked = data.likes.some((like: any) => like.reactor.fid.toString() === fid.toString());
+  const userRecast = data.recasts.some((recast: any) => recast.recaster.fid.toString() === fid.toString());
+
+  console.log(`User ${fid} has liked: ${userLiked}, has recasted: ${userRecast}`);
+
+  return userLiked || userRecast;
 }
 
 async function getMoxieUserInfo(fid: string): Promise<MoxieUserInfo> {
@@ -64,9 +142,6 @@ async function getMoxieUserInfo(fid: string): Promise<MoxieUserInfo> {
 
   const variables = { fid: fid };
 
-  console.log('Query:', query);
-  console.log('Variables:', JSON.stringify(variables, null, 2));
-
   try {
     console.log('Sending query to Airstack API...');
     const response = await fetch(AIRSTACK_API_URL, {
@@ -97,11 +172,6 @@ async function getMoxieUserInfo(fid: string): Promise<MoxieUserInfo> {
     const lifetimeEarnings = data.data?.lifetimeEarnings?.FarcasterMoxieEarningStat?.[0]?.allEarningsAmount || '0';
     const farScore = socialInfo.farcasterScore?.farScore || null;
 
-    console.log('Parsed social info:', socialInfo);
-    console.log('Today Earnings:', todayEarnings);
-    console.log('Lifetime Earnings:', lifetimeEarnings);
-    console.log('Farscore:', farScore);
-
     return {
       profileName: socialInfo.profileName || null,
       profileImage: socialInfo.profileImage || null,
@@ -115,44 +185,9 @@ async function getMoxieUserInfo(fid: string): Promise<MoxieUserInfo> {
   }
 }
 
-async function hasLikedAndRecasted(fid: string): Promise<boolean> {
-  const url = `https://api.wield.xyz/v1/reactions?castHash=${FRAME_CAST_HASH}&fid=${fid}`;
-  const options = {
-    method: 'GET',
-    headers: { 
-      'accept': 'application/json',
-      'x-api-key': WIELD_API_KEY 
-    },
-  };
-
-  try {
-    console.log(`Checking likes and recasts for FID: ${fid}`);
-    const response = await fetch(url, options);
-    const data = await response.json();
-    
-    console.log('Wield API response:', JSON.stringify(data, null, 2));
-
-    if (!data || (!data.likes && !data.recasts)) {
-      console.error('Unexpected API response structure:', data);
-      return false;
-    }
-    
-    const hasLiked = data.likes && data.likes.length > 0;
-    const hasRecasted = data.recasts && data.recasts.length > 0;
-
-    console.log(`User ${fid} has liked: ${hasLiked}, has recasted: ${hasRecasted}`);
-
-    // Return true if the user has either liked OR recasted
-    return hasLiked || hasRecasted;
-  } catch (error) {
-    console.error('Error checking likes and recasts:', error);
-    return false;
-  }
-}
-
 app.frame('/', (c) => {
   const backgroundImageUrl = 'https://amaranth-adequate-condor-278.mypinata.cloud/ipfs/QmNa4UgwGS1LZFCFqQ8yyPkLZ2dHomUh1WyrmEFkv3TY2s';
-  
+
   return c.res({
     image: (
       <div style={{
@@ -175,13 +210,8 @@ app.frame('/', (c) => {
 });
 
 app.frame('/check', async (c) => {
-  console.log('Entering /check frame');
-  console.log('Full context:', JSON.stringify(c, null, 2));
-
   const { fid } = c.frameData?.fid ? c.frameData : (c.req.query() || {});
   const { displayName, pfpUrl } = c.var?.interactor || {};
-
-  console.log(`FID: ${fid}, Display Name: ${displayName}, PFP URL: ${pfpUrl}`);
 
   if (!fid) {
     console.error('No FID found in frameData or query params');
@@ -197,12 +227,9 @@ app.frame('/check', async (c) => {
     });
   }
 
-  console.log(`Checking interactions for FID: ${fid}`);
   const hasInteracted = await hasLikedAndRecasted(fid.toString());
-  console.log(`Interaction check result for FID ${fid}: ${hasInteracted}`);
 
   if (!hasInteracted) {
-    console.log(`User ${fid} has not interacted, showing like/recast message`);
     return c.res({
       image: (
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', width: '100%', height: '100%', backgroundColor: '#E7C4E1' }}>
@@ -221,9 +248,7 @@ app.frame('/check', async (c) => {
   let errorMessage = '';
 
   try {
-    console.log(`Fetching user info for FID: ${fid}`);
     userInfo = await getMoxieUserInfo(fid.toString());
-    console.log('User info retrieved:', JSON.stringify(userInfo, null, 2));
   } catch (error) {
     console.error('Error in getMoxieUserInfo:', error);
     errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
@@ -231,7 +256,6 @@ app.frame('/check', async (c) => {
 
   const backgroundImageUrl = 'https://amaranth-adequate-condor-278.mypinata.cloud/ipfs/QmPEucEh1aDvSUeiFV3pgTcxqhYXbrADSuixd8wMkUqSrw';
 
-  console.log('Rendering frame');
   try {
     return c.res({
       image: (
